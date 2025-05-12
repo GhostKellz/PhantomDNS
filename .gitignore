@@ -1,0 +1,24 @@
+# Go build output
+bin/
+build/
+*.out
+*.test
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Dependency tools
+vendor/
+
+# Editors/IDEs
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# Secrets or env files
+.env
+.env.*
