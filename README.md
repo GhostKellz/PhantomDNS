@@ -1,12 +1,12 @@
 # PhantomDNS
 
 ![Go Version](https://img.shields.io/badge/go-1.22+-blue)
-![License](https://img.shields.io/github/license/ghostkellz/PhantomDNS)
-![Build](https://img.shields.io/github/actions/workflow/status/ghostkellz/PhantomDNS/go.yml?label=build)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ghostkellz/PhantomDNS)](https://goreportcard.com/report/github.com/ghostkellz/PhantomDNS)
+![Last Commit](https://img.shields.io/github/last-commit/ghostkellz/PhantomDNS)
 ![Status](https://img.shields.io/badge/status-early--dev-yellow)
 
 > A blazing-fast, modern, Go-native DNS resolver and filter engine. Built for speed, simplicity, and control — no unbound or BIND required.
-
+--- 
 ## ✨ Features
 
 - Recursive DNS resolution (forwarding, caching)
