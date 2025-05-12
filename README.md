@@ -1,6 +1,8 @@
 # PhantomDNS
 
 ![Go Version](https://img.shields.io/badge/go-1.22+-blue)
+![Docker Ready](https://img.shields.io/badge/docker-image--planned-blue)
+![DNSSEC Planned](https://img.shields.io/badge/DNSSEC-support--planned-lightgrey)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ghostkellz/PhantomDNS)](https://goreportcard.com/report/github.com/ghostkellz/PhantomDNS)
 ![Last Commit](https://img.shields.io/github/last-commit/ghostkellz/PhantomDNS)
 ![Status](https://img.shields.io/badge/status-early--dev-yellow)
