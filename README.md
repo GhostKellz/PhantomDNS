@@ -37,4 +37,4 @@ Listens on `:53` UDP by default (requires root or CAP_NET_BIND_SERVICE).
 
 ---
 
-Built by [@ghostkellz](https://github.com/ghostkellz) — part of the **GhostNet** stack.
+Built by [@ghostkellz](https://github.com/ghostkellz) — part of the **CK Technology Stack**, maintained by **CK Technology LLC**.
