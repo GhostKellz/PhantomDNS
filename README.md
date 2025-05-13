@@ -17,6 +17,7 @@
 - Authoritative DNS support (planned)
 - Lightweight Web UI and YAML config
 - Written entirely in Go (no system dependencies)
+- Optional Web UI served on port 5380 — designed for performance-conscious deployments.
 
 ## 🔧 Getting Started
 
