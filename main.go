@@ -3,15 +3,25 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
+	"encoding/base64"
+	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/dgraph-io/ristretto"
 	"github.com/miekg/dns"
 	"gopkg.in/yaml.v3"
+)
+
+var (
+	serverRunning = false
+	serverMutex   sync.Mutex
 )
 
 // Config structure for YAML configuration
@@ -103,13 +113,168 @@ func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg, upstream string, cache *
 	_ = w.WriteMsg(msg)
 }
 
+func handleDoHRequest(resp *dns.Msg, msg *dns.Msg, upstream string, cache *ristretto.Cache, blocklist map[string]struct{}) {
+	// Check if the domain is blocked
+	domain := msg.Question[0].Name
+	if _, blocked := blocklist[domain]; blocked {
+		log.Printf("Blocked query for domain: %s", domain)
+		resp.SetRcode(msg, dns.RcodeNameError)
+		return
+	}
+
+	// Check cache
+	if cachedResp, found := cache.Get(domain); found {
+		log.Printf("Cache hit for domain: %s", domain)
+		*resp = *cachedResp.(*dns.Msg)
+		return
+	}
+
+	// Query upstream
+	c := new(dns.Client)
+	upstreamResp, _, err := c.Exchange(msg, upstream)
+	if err != nil {
+		log.Printf("[error] upstream query failed: %v", err)
+		resp.SetRcode(msg, dns.RcodeServerFailure)
+	} else {
+		*resp = *upstreamResp
+		cache.Set(domain, resp, 1)
+	}
+}
+
+func restartServer() {
+	serverMutex.Lock()
+	defer serverMutex.Unlock()
+
+	if serverRunning {
+		log.Println("Restarting PhantomDNS...")
+		os.Exit(0) // Simulate restart by exiting; systemd or a script can restart it.
+	} else {
+		log.Println("PhantomDNS is not running.")
+	}
+}
+
+func updateBlocklists(config *Config, blocklist map[string]struct{}) {
+	log.Println("Updating blocklists...")
+	for _, url := range config.Blocklists {
+		for domain := range FetchBlocklist(url) {
+			blocklist[domain] = struct{}{}
+		}
+	}
+	log.Println("Blocklists updated.")
+}
+
+func showStatus(config *Config, blocklist map[string]struct{}, cache *ristretto.Cache) {
+	log.Printf("PhantomDNS Status:\n")
+	log.Printf("Listening on: %s\n", config.Port)
+	log.Printf("Upstream DNS: %s\n", config.Upstream)
+	log.Printf("Blocked domains: %d\n", len(blocklist))
+	log.Printf("Cache size: %d\n", config.CacheSize)
+}
+
+func startWebUI(blocklist map[string]struct{}, cache *ristretto.Cache) {
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "<h1>PhantomDNS Status</h1>")
+		fmt.Fprintf(w, "<p>Blocked domains: %d</p>", len(blocklist))
+		fmt.Fprintf(w, "<p>Cache size: %d</p>", cache.Metrics.CostAdded())
+	})
+
+	http.HandleFunc("/blocklist", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "<h1>Blocklist</h1>")
+		for domain := range blocklist {
+			fmt.Fprintf(w, "<p>%s</p>", domain)
+		}
+	})
+
+	log.Println("Starting Web UI on port 5380...")
+	if err := http.ListenAndServe(":5380", nil); err != nil {
+		log.Fatalf("Failed to start Web UI: %v", err)
+	}
+}
+
+func startDoTServer(config *Config, cache *ristretto.Cache, blocklist map[string]struct{}) {
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+
+	srv := &dns.Server{
+		Addr:      config.Port,
+		Net:       "tcp-tls",
+		TLSConfig: tlsConfig,
+	}
+
+	dns.HandleFunc(".", func(w dns.ResponseWriter, r *dns.Msg) {
+		handleDNSRequest(w, r, config.Upstream, cache, blocklist)
+	})
+
+	log.Println("Starting DoT server on", config.Port)
+	if err := srv.ListenAndServe(); err != nil {
+		log.Fatalf("Failed to start DoT server: %v", err)
+	}
+}
+
+func startDoHServer(config *Config, cache *ristretto.Cache, blocklist map[string]struct{}) {
+	http.HandleFunc("/dns-query", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" && r.Method != "GET" {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		msg := new(dns.Msg)
+		if r.Method == "POST" {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+				return
+			}
+			if err := msg.Unpack(body); err != nil {
+				http.Error(w, "Failed to parse DNS message", http.StatusBadRequest)
+				return
+			}
+		} else {
+			query := r.URL.Query().Get("dns")
+			data, err := base64.RawURLEncoding.DecodeString(query)
+			if err != nil {
+				http.Error(w, "Failed to decode query", http.StatusBadRequest)
+				return
+			}
+			if err := msg.Unpack(data); err != nil {
+				http.Error(w, "Failed to parse DNS message", http.StatusBadRequest)
+				return
+			}
+		}
+
+		resp := new(dns.Msg)
+		resp.SetReply(msg)
+		resp.Authoritative = true
+
+		// Handle DNS request for DoH
+		handleDoHRequest(resp, msg, config.Upstream, cache, blocklist)
+
+		// Write response
+		responseData, err := resp.Pack()
+		if err != nil {
+			http.Error(w, "Failed to pack DNS response", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/dns-message")
+		w.Write(responseData)
+	})
+
+	log.Println("Starting DoH server on port 443...")
+	if err := http.ListenAndServeTLS(":443", "server.crt", "server.key", nil); err != nil {
+		log.Fatalf("Failed to start DoH server: %v", err)
+	}
+}
+
 func main() {
+	// Parse CLI flags
+	restart := flag.Bool("r", false, "Restart PhantomDNS")
+	update := flag.Bool("u", false, "Update blocklists")
+	status := flag.Bool("s", false, "Show status")
+	flag.Parse()
+
 	// Load configuration
 	config := LoadConfig("config.yaml")
-
-	if os.Geteuid() != 0 {
-		log.Fatal("PhantomDNS must be run as root to bind to port 53")
-	}
 
 	// Initialize cache
 	cache, err := ristretto.NewCache(&ristretto.Config{
@@ -129,7 +294,33 @@ func main() {
 		}
 	}
 
-	// Use the upstream server from the config
+	// Handle CLI commands
+	if *restart {
+		restartServer()
+		return
+	}
+
+	if *update {
+		updateBlocklists(config, blocklist)
+		return
+	}
+
+	if *status {
+		showStatus(config, blocklist, cache)
+		return
+	}
+
+	// Start Web UI in a separate goroutine
+	go startWebUI(blocklist, cache)
+
+	// Start DoT server in a separate goroutine
+	go startDoTServer(config, cache, blocklist)
+
+	// Start DoH server in a separate goroutine
+	go startDoHServer(config, cache, blocklist)
+
+	// Start DNS server
+	serverRunning = true
 	dns.HandleFunc(".", func(w dns.ResponseWriter, r *dns.Msg) {
 		handleDNSRequest(w, r, config.Upstream, cache, blocklist)
 	})

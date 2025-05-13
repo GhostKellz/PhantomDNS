@@ -25,7 +25,17 @@ go run main.go
 ```
 
 Listens on `:53` UDP by default (requires root or CAP_NET_BIND_SERVICE).
+---
+## 🧪 Commands 
 
+```bash
+phantom -r   # Restart and reload configuration
+phantom -u   # Update blocklists from URLs
+phantom -s   # Show DNS server status
+phantom -c   # Clear in-memory DNS cache
+```
+
+---
 ## 🧩 Roadmap
 
 - [x] UDP resolver w/ upstream fallback
