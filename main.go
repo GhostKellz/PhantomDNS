@@ -3,16 +3,23 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dgraph-io/ristretto"
 	"github.com/miekg/dns"
@@ -191,9 +198,64 @@ func startWebUI(blocklist map[string]struct{}, cache *ristretto.Cache) {
 	}
 }
 
+func ensureSelfSignedCert(certFile, keyFile string) error {
+	if _, err := os.Stat(certFile); err == nil {
+		if _, err := os.Stat(keyFile); err == nil {
+			return nil // Both files exist
+		}
+	}
+	log.Println("Generating self-signed TLS certificate...")
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+	tmpl := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		Subject:               pkix.Name{CommonName: "localhost"},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		return err
+	}
+	certOut, err := os.Create(certFile)
+	if err != nil {
+		return err
+	}
+	defer certOut.Close()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+		return err
+	}
+	keyOut, err := os.Create(keyFile)
+	if err != nil {
+		return err
+	}
+	defer keyOut.Close()
+	privBytes := x509.MarshalPKCS1PrivateKey(priv)
+	if err := pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: privBytes}); err != nil {
+		return err
+	}
+	return nil
+}
+
 func startDoTServer(config *Config, cache *ristretto.Cache, blocklist map[string]struct{}) {
+	certFile := "server.crt"
+	keyFile := "server.key"
+	if err := ensureSelfSignedCert(certFile, keyFile); err != nil {
+		log.Fatalf("Failed to generate self-signed certificate: %v", err)
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		log.Fatalf("Failed to load TLS certificate: %v", err)
+	}
 	tlsConfig := &tls.Config{
-		MinVersion: tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	srv := &dns.Server{
