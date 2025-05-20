@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily refresh of PhantomDNS root hints
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

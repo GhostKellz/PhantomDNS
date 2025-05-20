@@ -1,0 +1,6 @@
+[Unit]
+Description=Refresh PhantomDNS Root Hints
+
+[Service]
+Type=oneshot
+ExecStart=/etc/pdns/refresh-roothints.sh

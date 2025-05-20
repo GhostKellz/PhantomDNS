@@ -19,7 +19,51 @@
 - Written entirely in Go (no system dependencies)
 - Optional Web UI served on port 5380 — designed for performance-conscious deployments.
 
-## 🔧 Getting Started
+---
+
+## 📦 Installation
+
+### Arch Linux (PKGBUILD)
+
+1. Clone the repo and build the package:
+   ```sh
+   git clone https://github.com/ghostkellz/PhantomDNS.git
+   cd PhantomDNS
+   makepkg -si
+   ```
+2. Configuration, certs, and root hints will be installed to `/etc/pdns/`.
+3. Systemd services and timers for PhantomDNS and daily root hints refresh will be installed and enabled.
+4. On first install, `server.crt` and `server.key` will be generated if missing.
+
+### Debian/Ubuntu (.deb)
+
+1. Clone the repo and build the .deb package:
+   ```sh
+   git clone https://github.com/ghostkellz/PhantomDNS.git
+   cd PhantomDNS
+   ./build-deb.sh
+   sudo dpkg -i phantomdns_*.deb
+   ```
+2. Configuration, certs, and root hints will be installed to `/etc/pdns/`.
+3. Systemd services and timers for PhantomDNS and daily root hints refresh will be installed and enabled.
+4. On first install, `server.crt` and `server.key` will be generated if missing.
+
+### Manual/Portable Install (Optional)
+
+1. Run the provided `setup.sh` script:
+   ```sh
+   ./setup.sh
+   ```
+2. This will build PhantomDNS, copy files to `/etc/pdns/`, generate certs/root hints if missing, and enable/start the systemd service/timer.
+
+---
+
+## 🔄 Root Hints Auto-Refresh
+- A script and systemd timer/cronjob will keep root hints up to date daily in `/etc/pdns/`.
+
+---
+
+## 🚀 Quick Start
 
 ```bash
 go run main.go

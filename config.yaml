@@ -1,5 +1,5 @@
 upstream: "1.1.1.1:53"
-port: ":5333"
+port: ":5335"
 blocklists:
   - "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
   - "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt"
